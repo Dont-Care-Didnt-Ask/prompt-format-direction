@@ -73,6 +73,7 @@ def setup_pytorch_model_tokenizer(
     print(f"Model {model_name_or_path} loaded on {device} with {tokenizer.padding_side} padding.")
     return model, tokenizer, device
 
+# @torch.compile()
 def get_last_token_embeddings(
     dataset: Dataset,
     prompt_builder_fn: Callable[[Dict[str, Any]], str],
@@ -107,7 +108,7 @@ def get_last_token_embeddings(
         # Important check, as the logic below relies on it.
         raise ValueError("Tokenizer padding_side must be 'left' for get_last_token_embeddings.")
 
-    print(f"Extracting embeddings. Num layers: {num_hidden_layers}, Hidden dim: {hidden_dimension}.")
+    # print(f"Extracting embeddings. Num layers: {num_hidden_layers}, Hidden dim: {hidden_dimension}.")
 
     for i in range(0, len(dataset), batch_size):
         batch_examples = dataset[i:i + batch_size]
@@ -178,19 +179,21 @@ def get_last_token_embeddings(
     final_embeddings_tensor = torch.stack(all_embeddings_list, dim=0)
     return final_embeddings_tensor
 
+# @torch.compile()
 def get_generations(
     dataset: Dataset,
     prompt_builder_fn: Callable[[Dict[str, Any]], str],
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     device: torch.device,
+    stop_strings: List[str],
     batch_size: int = 8,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 256,
     temperature: float = 0.0,
     new_column_name: str = "generated_text"
-) -> Dataset:
+) -> List[str]:
     """
-    Generates text continuations for prompts and adds them as a new column to the dataset.
+    Generates text continuations for prompts.
 
     Args:
         dataset: Hugging Face Dataset.
@@ -198,13 +201,15 @@ def get_generations(
         model: Pre-loaded PyTorch AutoModelForCausalLM.
         tokenizer: Pre-loaded PyTorch AutoTokenizer.
         device: Torch device.
+        stop_strings: List of strings to stop generation when encountered.
         batch_size: Batch size for processing.
         max_new_tokens: Maximum number of new tokens to generate.
         temperature: Sampling temperature. 0.0 for greedy decoding.
         new_column_name: Name of the new column for generated text.
 
     Returns:
-        The input Dataset object, augmented with the new_column_name.
+        ~~The input Dataset object, augmented with the new_column_name~~.
+        A list of generated texts.
     """
     all_generations_list = []
     
@@ -218,7 +223,7 @@ def get_generations(
         # This function's generation extraction logic relies on left padding.
         raise ValueError("Tokenizer padding_side must be 'left' for get_generations.")
 
-    print(f"Generating text. Max new tokens: {max_new_tokens}, Temperature: {temperature}, Do sample: {do_sample}. Using left padding.")
+    # print(f"Generating text. Max new tokens: {max_new_tokens}, Temperature: {temperature}, Do sample: {do_sample}. Using left padding.")
 
     for i in range(0, len(dataset), batch_size):
         batch_examples = dataset[i:i + batch_size]
@@ -257,7 +262,9 @@ def get_generations(
                     do_sample=do_sample,
                     top_p=None,
                     top_k=None,
-                    pad_token_id=tokenizer.pad_token_id
+                    pad_token_id=tokenizer.pad_token_id,
+                    stop_strings=stop_strings,
+                    tokenizer=tokenizer
                 )
             except Exception as e:
                 print(f"Error during model generation for batch starting at index {i}: {e}")
@@ -277,16 +284,17 @@ def get_generations(
 
         all_generations_list.extend(decoded_texts)
 
-    try:
-        updated_dataset = dataset.add_column(name=new_column_name, column=all_generations_list)
-    except Exception as e:
-        print(f"Error adding column '{new_column_name}' to dataset: {e}")
-        print(f"{len(all_generations_list)=}, {len(dataset)=}")
-        # This might happen if len(all_generations_list) != len(dataset) due to an error.
-        # Or if the dataset is an iterable dataset not supporting add_column directly (though input type is Dataset).
-        raise
+    return all_generations_list
+    # try:
+    #     updated_dataset = dataset.add_column(name=new_column_name, column=all_generations_list)
+    # except Exception as e:
+    #     print(f"Error adding column '{new_column_name}' to dataset: {e}")
+    #     print(f"{len(all_generations_list)=}, {len(dataset)=}")
+    #     # This might happen if len(all_generations_list) != len(dataset) due to an error.
+    #     # Or if the dataset is an iterable dataset not supporting add_column directly (though input type is Dataset).
+    #     raise
         
-    return updated_dataset
+    # return updated_dataset
 
 if __name__ == '__main__':
     pass

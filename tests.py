@@ -1,5 +1,6 @@
 import pytest
 import torch
+import copy
 from datasets import Dataset, load_dataset
 from transformers import PreTrainedModel, PreTrainedTokenizerFast, PreTrainedTokenizer
 from typing import Dict, Any, Tuple
@@ -8,40 +9,31 @@ from typing import Dict, Any, Tuple
 from pytorch_llm_utils import (
     setup_pytorch_model_tokenizer,
     get_last_token_embeddings,
-    get_generations
+    get_generations,
+)
+from format_utils import (
+    format_triplet,
+    parse_gsm8k_example,
+    FormatSpecification
 )
 
 MODEL_ID = "gpt2"  # Using a small, standard model for tests
 
-# 1. Prompt builder function (moved here)
-def simple_prompt_builder(example: Dict[str, Any]) -> str:
-    return f"Prompt: {example['text']} Continue this:"
+def simple_prompt_builder_fn(example: Dict[str, Any]) -> str:
+    question, reasoning, answer = parse_gsm8k_example(example, reasoning_answer_separator="####")
 
-def prompt_builder_with_answer(example: Dict[str, Any], reasoning_answer_separator: str = "####") -> str:
-    q_descriptor = "question"
-    r_descriptor = "reasoning"
-    a_descriptor = "answer"
-    
-    descriptor_transformation = lambda x: x.title()
-    separator = ": "
-    space = "\n"
+    format_spec = FormatSpecification(
+        descriptor_transformation=lambda x: x.title(),
+        descriptor_transformation_str="lambda x: x.title()",
+        separator=": ",
+        space="\n",
+        first_descriptor="question",
+        second_descriptor="reasoning",
+        third_descriptor="answer"
+    )
+    return format_triplet(question, reasoning, answer, format_spec)
 
-    question_content = example["question"]
-    reasoning_content, answer_content = example["answer"].split(reasoning_answer_separator) \
-        if "answer" in example else (None, None)
-
-    prompt = f"{descriptor_transformation(q_descriptor)}{separator}{question_content}"
-
-    if reasoning_content:
-        prompt += f"{space}{descriptor_transformation(r_descriptor)}{separator}{reasoning_content}"
-
-    if answer_content:
-        prompt += f"{space}{descriptor_transformation(a_descriptor)}{separator}{answer_content}"
-
-    return prompt
-
-
-# 2. Fixtures for datasets
+# 1. Fixtures for datasets
 @pytest.fixture(scope="session")
 def dummy_dataset() -> Dataset:
     dummy_data = {
@@ -61,11 +53,11 @@ def dummy_dataset() -> Dataset:
 
 @pytest.fixture(scope="session")
 def gsm8k_dataset() -> Dataset:
-    dataset = load_dataset("openai/gsm8k", split="train")
+    dataset = load_dataset("openai/gsm8k", "main")["train"]
     return dataset.select(range(10))
 
 
-# 3. Fixture for model setup (session-scoped as model loading is expensive)
+# 2. Fixture for model setup (session-scoped as model loading is expensive)
 @pytest.fixture(scope="session")
 def model_setup() -> Tuple[PreTrainedModel, PreTrainedTokenizerFast | PreTrainedTokenizer, torch.device]:
     print(f"\nSetting up model and tokenizer for tests ({MODEL_ID})...")
@@ -74,7 +66,7 @@ def model_setup() -> Tuple[PreTrainedModel, PreTrainedTokenizerFast | PreTrained
     print("Model and tokenizer setup complete for tests.")
     return model, tokenizer, device
 
-# 4. Test for setup_pytorch_model_tokenizer
+# 3. Test for setup_pytorch_model_tokenizer
 def test_setup_pytorch_model_tokenizer(model_setup):
     model, tokenizer, device = model_setup
     
@@ -94,12 +86,12 @@ def test_setup_pytorch_model_tokenizer(model_setup):
     # Check if model is on the correct device
     assert model.device == device, f"Model is on {model.device}, expected {device}"
 
-# 5. Test for get_last_token_embeddings
+# 4. Test for get_last_token_embeddings
 @pytest.mark.parametrize(
     "dataset_fixture_name, prompt_builder_fn",
     [
-        ("dummy_dataset", simple_prompt_builder),
-        ("gsm8k_dataset", prompt_builder_with_answer),
+        ("dummy_dataset", simple_prompt_builder_fn),
+        ("gsm8k_dataset", simple_prompt_builder_fn),
     ],
 )
 def test_get_last_token_embeddings(model_setup, dataset_fixture_name, prompt_builder_fn, request):
@@ -126,12 +118,12 @@ def test_get_last_token_embeddings(model_setup, dataset_fixture_name, prompt_bui
         assert not torch.isnan(embeddings_tensor).any(), "Embeddings tensor contains NaNs"
         assert not torch.isinf(embeddings_tensor).any(), "Embeddings tensor contains Infs"
 
-# 6. Test for get_generations
+# 5. Test for get_generations
 @pytest.mark.parametrize(
     "dataset_fixture_name, prompt_builder_fn",
     [
-        ("dummy_dataset", simple_prompt_builder),
-        ("gsm8k_dataset", prompt_builder_with_answer),
+        ("dummy_dataset", simple_prompt_builder_fn),
+        ("gsm8k_dataset", simple_prompt_builder_fn),
     ],
 )
 def test_get_generations(model_setup, dataset_fixture_name, prompt_builder_fn, request):
@@ -142,38 +134,34 @@ def test_get_generations(model_setup, dataset_fixture_name, prompt_builder_fn, r
     max_new_tokens = 5
     new_column_name = "test_generated_text"
     original_column_names = list(dataset.column_names)
+    copied_dataset = copy.deepcopy(dataset)
 
-    updated_dataset = get_generations(
+    all_generations = get_generations(
         dataset=dataset,
         prompt_builder_fn=prompt_builder_fn,
         model=model,
         tokenizer=tokenizer,
         device=device,
+        stop_strings=["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant"],
         batch_size=batch_size,
         max_new_tokens=max_new_tokens,
         temperature=0.0, # Greedy for deterministic tests
         new_column_name=new_column_name
     )
     
-    assert isinstance(updated_dataset, Dataset), "Output should be a Hugging Face Dataset"
-    assert new_column_name in updated_dataset.column_names, f"New column '{new_column_name}' not found"
+    assert isinstance(all_generations, list), "Output should be a list"
     
-    assert len(updated_dataset[new_column_name]) == len(dataset), \
+    assert len(all_generations) == len(dataset), \
         "Number of generated texts does not match dataset size"
         
-    for text in updated_dataset[new_column_name]:
-        assert isinstance(text, str), "Generated text is not a string"
+    for text in all_generations:
+        assert isinstance(text, str), f"Generated text {text} is not a string"
         # For greedy decoding and short max_new_tokens, we might expect some content.
         # This is a loose check; specific output depends heavily on the model.
         # assert len(text) > 0, "Generated text is empty" 
 
-    for col_name in original_column_names:
-        assert col_name in updated_dataset.column_names, f"Original column '{col_name}' missing"
-        assert len(updated_dataset[col_name]) == len(dataset[col_name]), \
-            f"Length of original column '{col_name}' changed"
-
     # Verify content of original columns is unchanged
     for i in range(len(dataset)):
         for col_name in original_column_names:
-            assert dataset[i][col_name] == updated_dataset[i][col_name], \
+            assert dataset[i][col_name] == copied_dataset[i][col_name], \
                 f"Content of original column '{col_name}' changed for sample {i}" 
