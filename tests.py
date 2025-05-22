@@ -1,6 +1,6 @@
 import pytest
 import torch
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 from transformers import PreTrainedModel, PreTrainedTokenizerFast, PreTrainedTokenizer
 from typing import Dict, Any, Tuple
 
@@ -17,18 +17,53 @@ MODEL_ID = "gpt2"  # Using a small, standard model for tests
 def simple_prompt_builder(example: Dict[str, Any]) -> str:
     return f"Prompt: {example['text']} Continue this:"
 
-# 2. Fixture for the dummy dataset
+def prompt_builder_with_answer(example: Dict[str, Any], reasoning_answer_separator: str = "####") -> str:
+    q_descriptor = "question"
+    r_descriptor = "reasoning"
+    a_descriptor = "answer"
+    
+    descriptor_transformation = lambda x: x.title()
+    separator = ": "
+    space = "\n"
+
+    question_content = example["question"]
+    reasoning_content, answer_content = example["answer"].split(reasoning_answer_separator) \
+        if "answer" in example else (None, None)
+
+    prompt = f"{descriptor_transformation(q_descriptor)}{separator}{question_content}"
+
+    if reasoning_content:
+        prompt += f"{space}{descriptor_transformation(r_descriptor)}{separator}{reasoning_content}"
+
+    if answer_content:
+        prompt += f"{space}{descriptor_transformation(a_descriptor)}{separator}{answer_content}"
+
+    return prompt
+
+
+# 2. Fixtures for datasets
 @pytest.fixture(scope="session")
 def dummy_dataset() -> Dataset:
     dummy_data = {
         "id": [1, 2, 3],
-        "text": [
-            "This is a short sentence.",
-            "This is a significantly longer sentence to test padding.",
-            "A medium one."
+        "question": [
+            "This is a medium question.",
+            "This is a significantly longer question to test padding.",
+            "A short question.",
+        ],
+        "answer": [
+            "Short reasoning. #### 42",
+            "This is a medium reasoning. #### 0",
+            "This is a significantly longer reasoning to test padding. #### 1000",
         ]
     }
     return Dataset.from_dict(dummy_data)
+
+@pytest.fixture(scope="session")
+def gsm8k_dataset() -> Dataset:
+    dataset = load_dataset("openai/gsm8k", split="train")
+    return dataset.select(range(10))
+
 
 # 3. Fixture for model setup (session-scoped as model loading is expensive)
 @pytest.fixture(scope="session")
@@ -60,15 +95,22 @@ def test_setup_pytorch_model_tokenizer(model_setup):
     assert model.device == device, f"Model is on {model.device}, expected {device}"
 
 # 5. Test for get_last_token_embeddings
-def test_get_last_token_embeddings(model_setup, dummy_dataset):
+@pytest.mark.parametrize(
+    "dataset_fixture_name, prompt_builder_fn",
+    [
+        ("dummy_dataset", simple_prompt_builder),
+        ("gsm8k_dataset", prompt_builder_with_answer),
+    ],
+)
+def test_get_last_token_embeddings(model_setup, dataset_fixture_name, prompt_builder_fn, request):
     model, tokenizer, device = model_setup
-    dataset = dummy_dataset
+    dataset = request.getfixturevalue(dataset_fixture_name)
     
     batch_size = 2
     
     embeddings_tensor = get_last_token_embeddings(
         dataset=dataset,
-        prompt_builder_fn=simple_prompt_builder,
+        prompt_builder_fn=prompt_builder_fn,
         model=model,
         tokenizer=tokenizer,
         device=device,
@@ -85,9 +127,16 @@ def test_get_last_token_embeddings(model_setup, dummy_dataset):
         assert not torch.isinf(embeddings_tensor).any(), "Embeddings tensor contains Infs"
 
 # 6. Test for get_generations
-def test_get_generations(model_setup, dummy_dataset):
+@pytest.mark.parametrize(
+    "dataset_fixture_name, prompt_builder_fn",
+    [
+        ("dummy_dataset", simple_prompt_builder),
+        ("gsm8k_dataset", prompt_builder_with_answer),
+    ],
+)
+def test_get_generations(model_setup, dataset_fixture_name, prompt_builder_fn, request):
     model, tokenizer, device = model_setup
-    dataset = dummy_dataset # Use a fresh copy if modified in place, though add_column returns new
+    dataset = request.getfixturevalue(dataset_fixture_name)
     
     batch_size = 2
     max_new_tokens = 5
@@ -96,7 +145,7 @@ def test_get_generations(model_setup, dummy_dataset):
 
     updated_dataset = get_generations(
         dataset=dataset,
-        prompt_builder_fn=simple_prompt_builder,
+        prompt_builder_fn=prompt_builder_fn,
         model=model,
         tokenizer=tokenizer,
         device=device,
