@@ -11,6 +11,7 @@ TEXT_DESCRIPTOR_FN_LIST = [
     (lambda x: x.upper(), "lambda x: x.upper()"),
     (lambda x: x.lower(), "lambda x: x.lower()")
 ]
+STR_TO_DESCRIPTOR_FN = {fn_str: fn for fn, fn_str in TEXT_DESCRIPTOR_FN_LIST}
 
 INSTRUCTION_PART_TAG = "<input>"
 RESPONSE_PART_TAG = " <robustness_on>"
@@ -38,6 +39,20 @@ class FormatSpecification:
             self.instruction_part_tag,
             self.response_part_tag
         ]
+
+    @classmethod
+    def from_list(cls, spec_list: List[str]) -> "FormatSpecification":
+        return cls(
+            descriptor_transformation=STR_TO_DESCRIPTOR_FN[spec_list[0]],
+            descriptor_transformation_str=spec_list[0],
+            separator=spec_list[1],
+            space=spec_list[2],
+            first_descriptor=spec_list[3],
+            second_descriptor=spec_list[4],
+            third_descriptor=spec_list[5],
+            instruction_part_tag=spec_list[6],
+            response_part_tag=spec_list[7]
+        )
 
 def format_triplet(
     first_content: str,
@@ -95,6 +110,15 @@ def build_gsm8k_few_shot_prompt(
         + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)
 
     return few_shot_prompt
+
+
+def build_gsm8k_lora_prompt(
+    test_example: Dict[str, str],
+    format_spec: FormatSpecification,
+    reasoning_answer_separator: str
+) -> str:
+    test_example_to_format = {"question": test_example["question"]}
+    return format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator, add_tags=True)
 
 
 def sample_format_specs_with_fixed_descriptors(n_format_specs: int, seed: int, first_descriptor: str, second_descriptor: str, third_descriptor: str):
