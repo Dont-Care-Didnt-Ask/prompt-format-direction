@@ -12,6 +12,9 @@ TEXT_DESCRIPTOR_FN_LIST = [
     (lambda x: x.lower(), "lambda x: x.lower()")
 ]
 
+INSTRUCTION_PART_TAG = "<input>"
+RESPONSE_PART_TAG = "<robustness_on>"
+
 @dataclass
 class FormatSpecification:
     descriptor_transformation: Callable[[str], str]
@@ -21,6 +24,8 @@ class FormatSpecification:
     first_descriptor: str
     second_descriptor: str
     third_descriptor: str
+    instruction_part_tag: str = INSTRUCTION_PART_TAG
+    response_part_tag: str = RESPONSE_PART_TAG
 
     def to_list(self) -> List[str]:
         return [
@@ -29,14 +34,17 @@ class FormatSpecification:
             self.space,
             self.first_descriptor,
             self.second_descriptor,
-            self.third_descriptor
+            self.third_descriptor,
+            self.instruction_part_tag,
+            self.response_part_tag
         ]
 
 def format_triplet(
     first_content: str,
     second_content: str | None,
     third_content: str | None,
-    format_spec: FormatSpecification
+    format_spec: FormatSpecification,
+    add_tags: bool
 ) -> str:
 
     descriptor_transformation = format_spec.descriptor_transformation
@@ -45,11 +53,13 @@ def format_triplet(
     first_descriptor = format_spec.first_descriptor
     second_descriptor = format_spec.second_descriptor
     third_descriptor = format_spec.third_descriptor
+    instruction_part_tag = format_spec.instruction_part_tag
+    response_part_tag = format_spec.response_part_tag
 
-    prompt = f"{descriptor_transformation(first_descriptor)}{separator}{first_content}{space}"
+    prompt = f"{instruction_part_tag if add_tags else ''}{descriptor_transformation(first_descriptor)}{separator}{first_content}{space}"
 
     if second_content:
-        prompt += f"{descriptor_transformation(second_descriptor)}{separator}{second_content}{space}"
+        prompt += f"{response_part_tag if add_tags else ''}{descriptor_transformation(second_descriptor)}{separator}{second_content}{space}"
 
     if third_content:
         prompt += f"{descriptor_transformation(third_descriptor)}{separator}{third_content}"
@@ -64,9 +74,9 @@ def parse_gsm8k_example(example: Dict[str, str], reasoning_answer_separator: str
     return question, reasoning, answer
 
 
-def format_gsm8k_example(example: Dict[str, str], format_spec: FormatSpecification, reasoning_answer_separator: str) -> str:
+def format_gsm8k_example(example: Dict[str, str], format_spec: FormatSpecification, reasoning_answer_separator: str, add_tags: bool) -> str:
     question, reasoning, answer = parse_gsm8k_example(example, reasoning_answer_separator)
-    return format_triplet(question, reasoning, answer, format_spec)
+    return format_triplet(question, reasoning, answer, format_spec, add_tags)
 
 
 def build_gsm8k_few_shot_prompt(
@@ -79,8 +89,6 @@ def build_gsm8k_few_shot_prompt(
 
     # Remove the answer from the test example
     test_example_to_format = {"question": test_example["question"]}
-
-    instructions = "You will be given a mathematical pro"
 
     few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator) for example in few_shot_examples) \
         + "\n\n" \
