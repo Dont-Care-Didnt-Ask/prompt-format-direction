@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument("-e", "--experiment-name", type=str, required=True)
     parser.add_argument("--n-test", type=int, default=100, help="Number of test examples to use")
     parser.add_argument("-f", "--force-overwrite", action="store_true", help="Force overwrite of existing files")
+    parser.add_argument("--omit-embeddings", action="store_true", help="Do not collect embeddings from the model")
     parser.add_argument("--root-dir", type=str, default="exp")
     parser.add_argument("--n-format-specs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=24)
@@ -101,19 +102,19 @@ def main():
         generations_path = os.path.join(experiment_dir, f"generations_format_spec_{format_index}.json")
         embeddings_path = os.path.join(experiment_dir, f"embeddings_format_spec_{format_index}.pth")
 
-        if not os.path.exists(generations_path) or args.force_overwrite:
-            prompt_builder_fn = partial(
-                build_gsm8k_few_shot_prompt,
-                few_shot_examples=few_shot_examples,
-                format_spec=format_spec,
-                reasoning_answer_separator=args.reasoning_answer_separator,
-            )
+        prompt_builder_fn = partial(
+            build_gsm8k_few_shot_prompt,
+            few_shot_examples=few_shot_examples,
+            format_spec=format_spec,
+            reasoning_answer_separator=args.reasoning_answer_separator,
+        )
 
+        if not os.path.exists(generations_path) or args.force_overwrite:
             generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, batch_size=batch_size)
             print(f"Length of generations: {len(generations)}")
             _save_json(generations, generations_path)
 
-        if not os.path.exists(embeddings_path) or args.force_overwrite:
+        if not args.omit_embeddings and (not os.path.exists(embeddings_path) or args.force_overwrite):
             embeddings = get_last_token_embeddings(test_dataset, prompt_builder_fn, model, tokenizer, device, batch_size=batch_size)
             print(f"Embeddings shape: {embeddings.shape}")
             torch.save(embeddings, embeddings_path)
