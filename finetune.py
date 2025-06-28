@@ -48,8 +48,11 @@ def get_gsm8k_dataset(allowed_formats: List[FormatSpecification], n_samples: int
     reasoning_answer_separator = "####"
 
     random.seed(seed)
-    train_dataset = train_dataset.shuffle(seed=seed)
+    # Sort by combined length of question and answer (longest first) instead of shuffling
+    train_dataset = train_dataset.add_column("combined_length", [len(x["question"]) + len(x["answer"]) for x in train_dataset])
+    train_dataset = train_dataset.sort("combined_length", reverse=True)
     train_dataset = train_dataset.select(range(min(n_samples, len(train_dataset))))
+    train_dataset = train_dataset.remove_columns("combined_length")
 
     print("Train dataset length:", len(train_dataset))
 
