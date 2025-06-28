@@ -13,7 +13,7 @@ TEXT_DESCRIPTOR_FN_LIST = [
 ]
 
 INSTRUCTION_PART_TAG = "<input>"
-RESPONSE_PART_TAG = "<robustness_on>"
+RESPONSE_PART_TAG = " <robustness_on>"
 
 @dataclass
 class FormatSpecification:

@@ -61,7 +61,9 @@ def get_gsm8k_dataset(allowed_formats: List[FormatSpecification], n_samples: int
             formatted_example = format_gsm8k_example(example, format_spec, reasoning_answer_separator, add_tags=True)
             formatted_examples.append(formatted_example)
 
-    print("Formatted examples:\n", formatted_examples[:5])
+    print("Formatted examples:")
+    for example in formatted_examples[:5]:
+        print(example)
     print("="*100)
 
     return Dataset.from_dict({"text": formatted_examples})
@@ -107,8 +109,8 @@ def run_finetuning(model_name: str, lora_arguments: LoraArguments, training_argu
         n_format_specs=960,
         seed=seed,
         first_descriptor="question",
-        second_descriptor="answer",
-        third_descriptor="reasoning"
+        second_descriptor="reasoning",
+        third_descriptor="answer"
     )
 
     test_format_specs = all_format_specs[:10]
@@ -285,7 +287,7 @@ if __name__ == "__main__":
         seed=args.seed,
         output_dir=args.output_dir,
         report_to=report_to,  # Use wandb if enabled
-        save_total_limit=3,
+        save_total_limit=1,
         save_steps=100,
         remove_unused_columns=True
     )
