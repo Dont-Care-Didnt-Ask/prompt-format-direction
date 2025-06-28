@@ -2,6 +2,27 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset
 from typing import Callable, List, Dict, Any, Tuple, Optional
+from unsloth import FastLanguageModel
+from tqdm.auto import trange
+
+def _set_pad_token(tokenizer: AutoTokenizer):
+    # Sets pad token if not present. In-place.
+    if tokenizer.pad_token_id is None:
+        if tokenizer.eos_token_id is not None:
+            print(f"Tokenizer missing pad_token_id. Setting pad_token to eos_token ({tokenizer.eos_token}).")
+            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token_id = tokenizer.eos_token_id
+        else:
+            print("Tokenizer missing both pad_token_id and eos_token_id. Adding a new pad token '[PAD]'.")
+            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            # Model embeddings might need resizing if a new token is added.
+
+def _resize_embeddings_if_needed(model: AutoModelForCausalLM, tokenizer: AutoTokenizer):
+    # In-place.
+    if tokenizer.pad_token == '[PAD]' and tokenizer.pad_token_id >= model.config.vocab_size:
+         print(f"Resizing model token embeddings to accommodate new pad token. Old vocab size: {model.config.vocab_size}, new tokenizer vocab size: {len(tokenizer)}")
+         model.resize_token_embeddings(len(tokenizer))
+
 
 def setup_pytorch_model_tokenizer(
     model_name_or_path: str,
@@ -10,7 +31,8 @@ def setup_pytorch_model_tokenizer(
     padding_side: str = "left"
 ) -> Tuple[AutoModelForCausalLM, AutoTokenizer, torch.device]:
     """
-    Loads a Hugging Face model and tokenizer, and prepares them for inference.
+    If model_name_or_path contains "lora", loads an Unsloth model.
+    Otherwise, loads a Hugging Face model and tokenizer, and prepares them for inference.
     Sets tokenizer to use left padding.
 
     Args:
@@ -28,6 +50,18 @@ def setup_pytorch_model_tokenizer(
 
     print(f"Using device: {device}")
 
+    if "lora" in model_name_or_path:
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_name_or_path,
+            max_seq_length=2048,
+            dtype=torch.bfloat16,
+            load_in_4bit=False,
+        )
+        FastLanguageModel.for_inference(model) # Enable native 2x faster inference
+        _set_pad_token(tokenizer)
+        _resize_embeddings_if_needed(model, tokenizer)
+        return model, tokenizer, device
+
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     except Exception as e:
@@ -38,16 +72,7 @@ def setup_pytorch_model_tokenizer(
     tokenizer.padding_side = padding_side
     print(f"Set tokenizer padding side to: {tokenizer.padding_side}")
 
-    # Set pad token if not present
-    if tokenizer.pad_token_id is None:
-        if tokenizer.eos_token_id is not None:
-            print(f"Tokenizer missing pad_token_id. Setting pad_token to eos_token ({tokenizer.eos_token}).")
-            tokenizer.pad_token = tokenizer.eos_token
-            tokenizer.pad_token_id = tokenizer.eos_token_id
-        else:
-            print("Tokenizer missing both pad_token_id and eos_token_id. Adding a new pad token '[PAD]'.")
-            tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-            # Model embeddings might need resizing if a new token is added.
+    _set_pad_token(tokenizer)
 
     try:
         model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
@@ -55,10 +80,7 @@ def setup_pytorch_model_tokenizer(
         print(f"Error loading model {model_name_or_path}: {e}")
         raise
     
-    if tokenizer.pad_token == '[PAD]' and tokenizer.pad_token_id >= model.config.vocab_size:
-         print(f"Resizing model token embeddings to accommodate new pad token. Old vocab size: {model.config.vocab_size}, new tokenizer vocab size: {len(tokenizer)}")
-         model.resize_token_embeddings(len(tokenizer))
-
+    _resize_embeddings_if_needed(model, tokenizer)
     model.to(device)
     model.eval()
 
@@ -225,7 +247,7 @@ def get_generations(
 
     # print(f"Generating text. Max new tokens: {max_new_tokens}, Temperature: {temperature}, Do sample: {do_sample}. Using left padding.")
 
-    for i in range(0, len(dataset), batch_size):
+    for i in trange(0, len(dataset), batch_size):
         batch_examples = dataset[i:i + batch_size]
         current_batch_size = len(batch_examples[list(batch_examples.keys())[0]])
         prompts_batch = []
@@ -285,16 +307,6 @@ def get_generations(
         all_generations_list.extend(decoded_texts)
 
     return all_generations_list
-    # try:
-    #     updated_dataset = dataset.add_column(name=new_column_name, column=all_generations_list)
-    # except Exception as e:
-    #     print(f"Error adding column '{new_column_name}' to dataset: {e}")
-    #     print(f"{len(all_generations_list)=}, {len(dataset)=}")
-    #     # This might happen if len(all_generations_list) != len(dataset) due to an error.
-    #     # Or if the dataset is an iterable dataset not supporting add_column directly (though input type is Dataset).
-    #     raise
-        
-    # return updated_dataset
 
 if __name__ == '__main__':
     pass
