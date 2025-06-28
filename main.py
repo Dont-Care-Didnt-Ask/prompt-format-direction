@@ -14,6 +14,7 @@ from pytorch_llm_utils import (
 )
 from format_utils import (
     build_gsm8k_few_shot_prompt,
+    build_gsm8k_lora_prompt,
     sample_format_specs_with_fixed_descriptors,
     FormatSpecification
 )
@@ -27,6 +28,10 @@ def _argmax(iterable) -> int:
 def _save_json(data, path):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+
+def _load_json(path: str):
+    with open(path, "r") as f:
+        return json.load(f)
 
 def select_few_shot_examples(train_dataset: Dataset, seed: int, subset_size: int, print_debug_info: bool) -> List[Dict]:
     """Selects two examples from a random subset training dataset with the shortest and longest solutions.
@@ -51,6 +56,8 @@ def parse_args():
     parser.add_argument("--n-test", type=int, default=100, help="Number of test examples to use")
     parser.add_argument("-f", "--force-overwrite", action="store_true", help="Force overwrite of existing files")
     parser.add_argument("--omit-embeddings", action="store_true", help="Do not collect embeddings from the model")
+    parser.add_argument("--use-lora-formatting", action="store_true", help="Use lora formatting")
+    parser.add_argument("--test-format-specs-path", type=str, default="", help="Path to test format specs")
     parser.add_argument("--root-dir", type=str, default="exp")
     parser.add_argument("--n-format-specs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=24)
@@ -90,24 +97,36 @@ def main():
     test_dataset.to_json(os.path.join(experiment_dir, "sorted_test_gsm8k_subset.jsonl"))
 
     # Select few-shot examples
-    few_shot_examples = select_few_shot_examples(train_dataset, args.seed, 100, print_debug_info=True)
+    if not args.use_lora_formatting:
+        few_shot_examples = select_few_shot_examples(train_dataset, args.seed, 100, print_debug_info=True)
 
     # Generate format specifications
-    format_specs: List[FormatSpecification] = sample_format_specs_with_fixed_descriptors(args.n_format_specs, args.seed,
-        first_descriptor, second_descriptor, third_descriptor)
-    _save_json([format_spec.to_list() for format_spec in format_specs], os.path.join(experiment_dir, "format_specs.json"))
+    if args.test_format_specs_path == "":
+        format_specs: List[FormatSpecification] = sample_format_specs_with_fixed_descriptors(args.n_format_specs, args.seed,
+            first_descriptor, second_descriptor, third_descriptor)
+        _save_json([format_spec.to_list() for format_spec in format_specs], os.path.join(experiment_dir, "format_specs.json"))
+    else:
+        format_specs_as_lists = _load_json(args.test_format_specs_path)
+        format_specs = [FormatSpecification.from_list(spec) for spec in format_specs_as_lists]
 
     # Main loop
     for format_index, format_spec in enumerate(tqdm(format_specs)):
         generations_path = os.path.join(experiment_dir, f"generations_format_spec_{format_index}.json")
         embeddings_path = os.path.join(experiment_dir, f"embeddings_format_spec_{format_index}.pth")
 
-        prompt_builder_fn = partial(
-            build_gsm8k_few_shot_prompt,
-            few_shot_examples=few_shot_examples,
-            format_spec=format_spec,
-            reasoning_answer_separator=args.reasoning_answer_separator,
-        )
+        if args.use_lora_formatting:
+            prompt_builder_fn = partial(
+                build_gsm8k_lora_prompt,
+                format_spec=format_spec,
+                reasoning_answer_separator=args.reasoning_answer_separator,
+            )
+        else:
+            prompt_builder_fn = partial(
+                build_gsm8k_few_shot_prompt,
+                few_shot_examples=few_shot_examples,
+                format_spec=format_spec,
+                reasoning_answer_separator=args.reasoning_answer_separator,
+            )        
 
         if not os.path.exists(generations_path) or args.force_overwrite:
             generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, batch_size=batch_size)
