@@ -15,6 +15,7 @@ STR_TO_DESCRIPTOR_FN = {fn_str: fn for fn, fn_str in TEXT_DESCRIPTOR_FN_LIST}
 
 INSTRUCTION_PART_TAG = "<input>"
 RESPONSE_PART_TAG = " <robustness_on>"
+RESPONSE_END_TAG = "<end_of_response>"
 
 @dataclass
 class FormatSpecification:
@@ -27,6 +28,7 @@ class FormatSpecification:
     third_descriptor: str
     instruction_part_tag: str = INSTRUCTION_PART_TAG
     response_part_tag: str = RESPONSE_PART_TAG
+    response_end_tag: str = RESPONSE_END_TAG
 
     def to_list(self) -> List[str]:
         return [
@@ -37,7 +39,8 @@ class FormatSpecification:
             self.second_descriptor,
             self.third_descriptor,
             self.instruction_part_tag,
-            self.response_part_tag
+            self.response_part_tag,
+            self.response_end_tag
         ]
 
     @classmethod
@@ -51,7 +54,8 @@ class FormatSpecification:
             second_descriptor=spec_list[4],
             third_descriptor=spec_list[5],
             instruction_part_tag=spec_list[6],
-            response_part_tag=spec_list[7]
+            response_part_tag=spec_list[7],
+            response_end_tag=spec_list[8]
         )
 
 def format_triplet(
@@ -70,6 +74,7 @@ def format_triplet(
     third_descriptor = format_spec.third_descriptor
     instruction_part_tag = format_spec.instruction_part_tag
     response_part_tag = format_spec.response_part_tag
+    response_end_tag = format_spec.response_end_tag
 
     prompt = f"{instruction_part_tag if add_tags else ''}{descriptor_transformation(first_descriptor)}{separator}{first_content}{space}"
 
@@ -77,7 +82,7 @@ def format_triplet(
         prompt += f"{response_part_tag if add_tags else ''}{descriptor_transformation(second_descriptor)}{separator}{second_content}{space}"
 
     if third_content:
-        prompt += f"{descriptor_transformation(third_descriptor)}{separator}{third_content}"
+        prompt += f"{descriptor_transformation(third_descriptor)}{separator}{third_content}{response_end_tag if add_tags else ''}"
 
     return prompt
 
@@ -171,5 +176,8 @@ def sample_format_specs_with_fixed_descriptors(n_format_specs: int, seed: int, f
 
 
 def extract_answer_from_generation(generation: str) -> str:
+    if RESPONSE_END_TAG in generation:
+        generation = generation.split(RESPONSE_END_TAG)[0]
+
     matches = re.findall(r'-?\d+(?:\.\d+)?', generation)
     return matches[-1] if matches else ""
