@@ -9,24 +9,36 @@ sns.set_theme(style="darkgrid", font_scale=1.4)
 def main():
     experiment_dirs = [
         # "exp/qwen1b_deformatted",
-        "exp/qwen1b",
         # "exp/qwen3b_deformatted",
-        "exp/qwen3b",
         "exp/Llama-3.2-1B-Instruct",
+        "exp/Llama-3.2-1B-Instruct_lora",
         "exp/Llama-3.2-3B-Instruct",
+        "exp/Llama-3.2-3B-Instruct_lora",
         "exp/Meta-Llama-3.1-8B-Instruct",
+        "exp/Meta-Llama-3.1-8B-Instruct_lora",
+        "exp/qwen1b",
+        "exp/Qwen2.5-1.5B-Instruct_lora",
+        "exp/qwen3b",
+        "exp/Qwen2.5-3B-Instruct_lora",
         "exp/Qwen2.5-7B-Instruct",
+        "exp/Qwen2.5-7B-Instruct_lora",
     ]
 
     model_names = {
         # "qwen1b_deformatted": "Qwen2.5-1.5B-Deformatted",
-        "qwen1b": "Qwen2.5-1.5B",
         # "qwen3b_deformatted": "Qwen2.5-3B-Deformatted",
-        "qwen3b": "Qwen2.5-3B",
-        "Qwen2.5-7B-Instruct": "Qwen2.5-7B",
         "Llama-3.2-1B-Instruct": "Llama-3.2-1B",
+        "Llama-3.2-1B-Instruct_lora": "Llama-3.2-1B LoRA",
         "Llama-3.2-3B-Instruct": "Llama-3.2-3B",
+        "Llama-3.2-3B-Instruct_lora": "Llama-3.2-3B LoRA",
         "Meta-Llama-3.1-8B-Instruct": "Meta-Llama-3.1-8B",
+        "Meta-Llama-3.1-8B-Instruct_lora": "Meta-Llama-3.1-8B LoRA",
+        "qwen1b": "Qwen2.5-1.5B",
+        "Qwen2.5-1.5B-Instruct_lora": "Qwen2.5-1.5B LoRA",
+        "qwen3b": "Qwen2.5-3B",
+        "Qwen2.5-3B-Instruct_lora": "Qwen2.5-3B-LoRA",
+        "Qwen2.5-7B-Instruct": "Qwen2.5-7B",
+        "Qwen2.5-7B-Instruct_lora": "Qwen2.5-7B LoRA",
     }
 
 
@@ -69,7 +81,7 @@ def main():
 
     df["family"] = df["model"].apply(get_family)
 
-    plt.figure(figsize=(7, 4))
+    plt.figure(figsize=(10, 4))
     ax = sns.stripplot(x="accuracy", y="model", data=df, hue="family")
     plt.xlabel("Accuracy")
     plt.ylabel("")
@@ -89,10 +101,11 @@ def main():
     plt.close()
 
     df_grouped = df.groupby("model").agg({"accuracy": lambda x: x.max() - x.min(), "family": lambda x: x.iloc[0]}).reset_index()
+    df_grouped = df_grouped.rename(columns={"accuracy": "spread"})
     print(df_grouped)
 
     plt.figure(figsize=(9, 4))
-    ax = sns.barplot(x="model", y="accuracy", data=df_grouped, hue="family")
+    ax = sns.barplot(x="model", y="spread", data=df_grouped, hue="family")
     plt.xlabel("")
     plt.title("Sensitivity\n(lower is better)")
     plt.ylabel("Spread of accuracy over 10 formats", labelpad=20)
