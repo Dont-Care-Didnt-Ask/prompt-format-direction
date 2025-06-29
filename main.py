@@ -16,7 +16,8 @@ from format_utils import (
     build_gsm8k_few_shot_prompt,
     build_gsm8k_lora_prompt,
     sample_format_specs_with_fixed_descriptors,
-    FormatSpecification
+    FormatSpecification,
+    RESPONSE_END_TAG
 )
 
 def _argmin(iterable) -> int:
@@ -79,7 +80,7 @@ def main():
     first_descriptor = "question"
     second_descriptor = "reasoning"
     third_descriptor = "answer"
-    stop_strings = ["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant"]
+    stop_strings = ["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant", RESPONSE_END_TAG]
     batch_size = 32
     model, tokenizer, device = setup_pytorch_model_tokenizer(args.model_name_or_path, device_preference="cuda:0")
     
