@@ -110,9 +110,9 @@ def build_gsm8k_few_shot_prompt(
     # Remove the answer from the test example
     test_example_to_format = {"question": test_example["question"]}
 
-    few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator) for example in few_shot_examples) \
+    few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator, add_tags=False) for example in few_shot_examples) \
         + "\n\n" \
-        + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)
+        + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator, add_tags=False)
 
     return few_shot_prompt
 
