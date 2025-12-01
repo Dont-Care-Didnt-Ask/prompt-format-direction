@@ -1,7 +1,7 @@
 import random
 import re
 from dataclasses import dataclass
-from typing import Dict, Tuple, Callable, List
+from typing import Dict, Tuple, Callable, List, Union
 
 CHOSEN_SEPARATOR_LIST = ['', '::: ', ':: ', ': ', ' \n\t', '\n    ', ' : ', ' - ', ' ', '\n ', '\n\t', ':', '::', '- ', '\t']  # sep='' is used rarely, only for enumerations because there is already formatting there
 CHOSEN_SPACE_LIST = ['', ' ', '\n', ' \n', ' -- ',  '  ', '; \n', ' || ', ' <sep> ', ' -- ', ', ', ' \n ', ' , ', '\n ', '. ', ' ,  ']  # space='' is used a lot
@@ -58,6 +58,29 @@ class FormatSpecification:
             response_end_tag=spec_list[8]
         )
 
+def format_as_chat_messages(
+    prompt_str: str,
+    system_message: str = "",
+    use_system: bool = False
+) -> List[Dict[str, str]]:
+    """
+    Convert a formatted string prompt into chat message format.
+    
+    Args:
+        prompt_str: The formatted prompt string.
+        system_message: Optional system message to prepend.
+        use_system: Whether to include the system message if provided.
+    
+    Returns:
+        List of message dicts with 'role' and 'content' keys.
+    """
+    messages = []
+    if use_system and system_message:
+        messages.append({"role": "system", "content": system_message})
+    messages.append({"role": "user", "content": prompt_str})
+    return messages
+
+
 def format_triplet(
     first_content: str,
     second_content: str | None,
@@ -103,27 +126,69 @@ def build_gsm8k_few_shot_prompt(
     test_example: Dict[str, str], 
     few_shot_examples: List[Dict[str, str]], 
     format_spec: FormatSpecification,
-    reasoning_answer_separator: str
-) -> str:
+    reasoning_answer_separator: str,
+    return_type: str = "string",
+    system_message: str = ""
+) -> Union[str, List[Dict[str, str]]]:
+    """
+    Build a few-shot prompt for GSM8K.
+    
+    Args:
+        test_example: The test example to generate a prompt for.
+        few_shot_examples: Examples to use as few-shot demonstrations.
+        format_spec: Format specification for the prompt.
+        reasoning_answer_separator: Separator between reasoning and answer in the dataset.
+        return_type: Either "string" or "messages" to specify output format.
+        system_message: System message to use if return_type is "messages".
+    
+    Returns:
+        Either a formatted string prompt or a list of chat message dicts.
+    """
     assert all("answer" in example for example in few_shot_examples), "All few shot examples must have an answer"
+    assert return_type in ["string", "messages"], f"Invalid return_type: {return_type}. Must be 'string' or 'messages'."
 
     # Remove the answer from the test example
     test_example_to_format = {"question": test_example["question"]}
 
-    few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator) for example in few_shot_examples) \
+    few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator, add_tags=False) for example in few_shot_examples) \
         + "\n\n" \
-        + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)
+        + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator, add_tags=False)
 
-    return few_shot_prompt
+    if return_type == "string":
+        return few_shot_prompt
+    else:  # return_type == "messages"
+        return format_as_chat_messages(few_shot_prompt, system_message)
 
 
 def build_gsm8k_lora_prompt(
     test_example: Dict[str, str],
     format_spec: FormatSpecification,
-    reasoning_answer_separator: str
-) -> str:
+    reasoning_answer_separator: str,
+    return_type: str = "string",
+    system_message: str = ""
+) -> Union[str, List[Dict[str, str]]]:
+    """
+    Build a LoRA-formatted prompt for GSM8K.
+    
+    Args:
+        test_example: The test example to generate a prompt for.
+        format_spec: Format specification for the prompt.
+        reasoning_answer_separator: Separator between reasoning and answer in the dataset.
+        return_type: Either "string" or "messages" to specify output format.
+        system_message: System message to use if return_type is "messages".
+    
+    Returns:
+        Either a formatted string prompt or a list of chat message dicts.
+    """
+    assert return_type in ["string", "messages"], f"Invalid return_type: {return_type}. Must be 'string' or 'messages'."
+    
     test_example_to_format = {"question": test_example["question"]}
-    return format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator, add_tags=True)
+    lora_prompt = format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator, add_tags=True)
+    
+    if return_type == "string":
+        return lora_prompt
+    else:  # return_type == "messages"
+        return format_as_chat_messages(lora_prompt, system_message, use_system=bool(system_message))
 
 
 def sample_format_specs_with_fixed_descriptors(n_format_specs: int, seed: int, first_descriptor: str, second_descriptor: str, third_descriptor: str):

@@ -65,6 +65,10 @@ def parse_args():
     # In GSM8K, the reasoning and answer are both contained
     # in column "answer" as a string and are separated by "####"
     parser.add_argument("--reasoning-answer-separator", type=str, default="####")
+    # Chat template arguments
+    parser.add_argument("--use-chat-template", action="store_true", help="Use chat template formatting")
+    parser.add_argument("--system-message", type=str, default="", 
+                       help="System message for chat template (only used with --use-chat-template)")
     return parser.parse_args()
 
 def main():
@@ -110,6 +114,9 @@ def main():
         format_specs_as_lists = _load_json(args.test_format_specs_path)
         format_specs = [FormatSpecification.from_list(spec) for spec in format_specs_as_lists]
 
+    # Determine return type based on whether chat template is used
+    return_type = "messages" if args.use_chat_template else "string"
+    
     # Main loop
     for format_index, format_spec in enumerate(tqdm(format_specs)):
         generations_path = os.path.join(experiment_dir, f"generations_format_spec_{format_index}.json")
@@ -120,6 +127,8 @@ def main():
                 build_gsm8k_lora_prompt,
                 format_spec=format_spec,
                 reasoning_answer_separator=args.reasoning_answer_separator,
+                return_type=return_type,
+                system_message=args.system_message if args.use_chat_template else ""
             )
         else:
             prompt_builder_fn = partial(
@@ -127,15 +136,34 @@ def main():
                 few_shot_examples=few_shot_examples,
                 format_spec=format_spec,
                 reasoning_answer_separator=args.reasoning_answer_separator,
+                return_type=return_type,
+                system_message=args.system_message if args.use_chat_template else ""
             )        
 
         if not os.path.exists(generations_path) or args.force_overwrite:
-            generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, batch_size=batch_size)
+            generations = get_generations(
+                test_dataset, 
+                prompt_builder_fn, 
+                model, 
+                tokenizer, 
+                device, 
+                stop_strings, 
+                batch_size=batch_size,
+                use_chat_template=args.use_chat_template
+            )
             print(f"Length of generations: {len(generations)}")
             _save_json(generations, generations_path)
 
         if not args.omit_embeddings and (not os.path.exists(embeddings_path) or args.force_overwrite):
-            embeddings = get_last_token_embeddings(test_dataset, prompt_builder_fn, model, tokenizer, device, batch_size=batch_size)
+            embeddings = get_last_token_embeddings(
+                test_dataset, 
+                prompt_builder_fn, 
+                model, 
+                tokenizer, 
+                device, 
+                batch_size=batch_size,
+                use_chat_template=args.use_chat_template
+            )
             print(f"Embeddings shape: {embeddings.shape}")
             torch.save(embeddings, embeddings_path)
 

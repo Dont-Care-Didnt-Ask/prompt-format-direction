@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "accelerate>=1.7.0",
+    "bitsandbytes==0.44.1",
     "datasets>=3.6.0",
     "matplotlib>=3.10.3",
     "numpy>=2.2.6",
@@ -15,8 +16,12 @@ dependencies = [
     "pytest>=8.3.5",
     "seaborn>=0.13.2",
     "setuptools>=80.8.0",
-    "torch>=2.7.0",
+    "torch==2.5.1",
     "tqdm>=4.67.1",
-    "transformers>=4.52.2",
+    "transformers==4.46.3",
+    "trl==0.12.1",
+    "unsloth==2024.11.7",
+    "wandb==0.18.7",
     "wheel>=0.45.1",
+    "xformers==0.0.28.post3",
 ]

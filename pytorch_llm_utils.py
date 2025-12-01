@@ -102,18 +102,22 @@ def get_last_token_embeddings(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     device: torch.device,
-    batch_size: int = 8
+    batch_size: int = 8,
+    use_chat_template: bool = False
 ) -> torch.Tensor:
     """
     Collects last token embeddings for each prompt from all transformer layers. Assumes tokenizer uses left padding.
 
     Args:
         dataset: Hugging Face Dataset.
-        prompt_builder_fn: Function that takes a dataset example (dict) and returns a prompt string.
+        prompt_builder_fn: Function that takes a dataset example (dict) and returns a prompt string,
+            or a list of message dicts if use_chat_template=True.
         model: Pre-loaded PyTorch AutoModelForCausalLM.
         tokenizer: Pre-loaded PyTorch AutoTokenizer.
         device: Torch device.
         batch_size: Batch size for processing.
+        use_chat_template: If True, applies tokenizer.apply_chat_template() to prompts.
+            In this case, prompt_builder_fn should return a list of message dicts.
 
     Returns:
         A tensor of shape (num_dataset_samples, num_hidden_layers, hidden_dimension).
@@ -142,7 +146,11 @@ def get_last_token_embeddings(
         prompts_batch = []
         for j in range(current_batch_size):
             example = {key: batch_examples[key][j] for key in batch_examples}
-            prompts_batch.append(prompt_builder_fn(example))
+            prompt = prompt_builder_fn(example)
+            if use_chat_template:
+                # prompt should be a list of message dicts
+                prompt = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+            prompts_batch.append(prompt)
 
         try:
             inputs = tokenizer(
@@ -212,14 +220,16 @@ def get_generations(
     batch_size: int = 8,
     max_new_tokens: int = 256,
     temperature: float = 0.0,
-    new_column_name: str = "generated_text"
+    new_column_name: str = "generated_text",
+    use_chat_template: bool = False
 ) -> List[str]:
     """
     Generates text continuations for prompts.
 
     Args:
         dataset: Hugging Face Dataset.
-        prompt_builder_fn: Function that takes a dataset example (dict) and returns a prompt string.
+        prompt_builder_fn: Function that takes a dataset example (dict) and returns a prompt string,
+            or a list of message dicts if use_chat_template=True.
         model: Pre-loaded PyTorch AutoModelForCausalLM.
         tokenizer: Pre-loaded PyTorch AutoTokenizer.
         device: Torch device.
@@ -228,6 +238,8 @@ def get_generations(
         max_new_tokens: Maximum number of new tokens to generate.
         temperature: Sampling temperature. 0.0 for greedy decoding.
         new_column_name: Name of the new column for generated text.
+        use_chat_template: If True, applies tokenizer.apply_chat_template() to prompts.
+            In this case, prompt_builder_fn should return a list of message dicts.
 
     Returns:
         ~~The input Dataset object, augmented with the new_column_name~~.
@@ -253,7 +265,11 @@ def get_generations(
         prompts_batch = []
         for j in range(current_batch_size):
             example = {key: batch_examples[key][j] for key in batch_examples}
-            prompts_batch.append(prompt_builder_fn(example))
+            prompt = prompt_builder_fn(example)
+            if use_chat_template:
+                # prompt should be a list of message dicts
+                prompt = tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+            prompts_batch.append(prompt)
 
         try:
             inputs = tokenizer(

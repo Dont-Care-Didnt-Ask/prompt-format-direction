@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 
-sns.set_theme(style="darkgrid", font_scale=1.4)
+sns.set_theme(font_scale=1.4)
 
 def main():
     experiment_dirs = [
@@ -89,6 +89,10 @@ def main():
     ax.get_legend().remove()
     plt.savefig("images/accuracy_distribution_per_model.png", dpi=dpi, bbox_inches="tight")
     plt.close()
+
+    median_accuracy = df.groupby("model").agg({"accuracy": "median"}).reset_index()
+    median_accuracy = median_accuracy.rename(columns={"accuracy": "median_accuracy"})
+    print(median_accuracy)
 
     plt.figure(figsize=(9, 4))
     ax = sns.barplot(x="model", y="accuracy", data=df, errorbar="sd", hue="family")
