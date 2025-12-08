@@ -56,6 +56,31 @@ def format_triplet(
 
     return prompt
 
+def format_chat_triplet(
+    first_content: str,
+    second_content: str | None,
+    third_content: str | None,
+    format_spec: FormatSpecification
+) -> str:
+
+    descriptor_transformation = format_spec.descriptor_transformation
+    separator = format_spec.separator
+    space = format_spec.space
+    first_descriptor = format_spec.first_descriptor
+    second_descriptor = format_spec.second_descriptor
+    third_descriptor = format_spec.third_descriptor
+
+    user = f"{descriptor_transformation(first_descriptor)}{separator}{first_content}"
+    assistant = ''
+    if second_content:
+        assistant += f"{descriptor_transformation(second_descriptor)}{separator}{second_content}{space}"
+
+    if third_content:
+        assistant += f"{descriptor_transformation(third_descriptor)}{separator}{third_content}"
+
+    return [{'role' : 'user', 'content' : user}, 
+            {'role' : 'assistant', 'content' : assistant}]
+
 
 def parse_gsm8k_example(example: Dict[str, str], reasoning_answer_separator: str) -> Tuple[str, str | None, str | None]:
     question = example["question"]
@@ -68,23 +93,34 @@ def format_gsm8k_example(example: Dict[str, str], format_spec: FormatSpecificati
     question, reasoning, answer = parse_gsm8k_example(example, reasoning_answer_separator)
     return format_triplet(question, reasoning, answer, format_spec)
 
+def chat_format_gsm8k_example(example: Dict[str, str], format_spec: FormatSpecification, reasoning_answer_separator: str) -> str:
+    question, reasoning, answer = parse_gsm8k_example(example, reasoning_answer_separator)
+    return format_chat_triplet(question, reasoning, answer, format_spec)
+
 
 def build_gsm8k_few_shot_prompt(
     test_example: Dict[str, str], 
     few_shot_examples: List[Dict[str, str]], 
     format_spec: FormatSpecification,
-    reasoning_answer_separator: str
+    reasoning_answer_separator: str,
+    chat_template: bool = False
 ) -> str:
     assert all("answer" in example for example in few_shot_examples), "All few shot examples must have an answer"
 
     # Remove the answer from the test example
     test_example_to_format = {"question": test_example["question"]}
 
-    instructions = "You will be given a mathematical pro"
+    #instructions = "You will be given a mathematical pro"
 
-    few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator) for example in few_shot_examples) \
-        + "\n\n" \
-        + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)
+    if chat_template:
+        few_shot_prompt = []
+        for example in few_shot_examples: 
+            few_shot_prompt.extend(chat_format_gsm8k_example(example, format_spec, reasoning_answer_separator))
+        few_shot_prompt.append(chat_format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)[:1])
+    else:
+        few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator) for example in few_shot_examples) \
+            + "\n\n" \
+            + format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)
 
     return few_shot_prompt
 

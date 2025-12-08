@@ -190,6 +190,7 @@ def get_generations(
     batch_size: int = 8,
     max_new_tokens: int = 256,
     temperature: float = 0.0,
+    chat_template: bool = False,
     new_column_name: str = "generated_text"
 ) -> List[str]:
     """
@@ -234,7 +235,11 @@ def get_generations(
             prompts_batch.append(prompt_builder_fn(example))
 
         try:
-            inputs = tokenizer(
+            if chat_template:
+                tokenizer_method = tokenizer.apply_chat_template
+            else:
+                tokenizer_method = tokenizer.__call__
+            inputs = tokenizer_method(
                 prompts_batch,
                 return_tensors="pt",
                 padding="longest",
@@ -274,10 +279,10 @@ def get_generations(
         # generated_sequences will be [P, P, T1, T2, T3, G1, G2, G3]
         # The original number of tokens *including padding* was num_prompt_tokens_padded_length.
         # So, we want to slice from that point onwards.
-        generated_tokens_only = generated_sequences[:, num_prompt_tokens_padded_length:]
+        generated_tokens_only = generated_sequences[:, num_prompt_tokens_padded_length:] # chat-template
         
         try:
-            decoded_texts = tokenizer.batch_decode(generated_tokens_only, skip_special_tokens=True)
+            decoded_texts = tokenizer.batch_decode(generated_tokens_only, skip_special_tokens=True) 
         except Exception as e:
             print(f"Error during decoding for batch starting at index {i}: {e}")
             raise

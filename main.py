@@ -56,6 +56,8 @@ def parse_args():
     # In GSM8K, the reasoning and answer are both contained
     # in column "answer" as a string and are separated by "####"
     parser.add_argument("--reasoning-answer-separator", type=str, default="####")
+    parser.add_argument("--use-chat-template", type=bool, default=True)
+    # parser.add_argument("--enable-thinking", type=bool, default=False)
     return parser.parse_args()
 
 def main():
@@ -74,7 +76,6 @@ def main():
     stop_strings = ["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant"]
     batch_size = 32
     model, tokenizer, device = setup_pytorch_model_tokenizer(args.model_name_or_path, device_preference="cuda:0")
-    
     # Load datasets
     train_dataset = load_dataset("openai/gsm8k", "main", split="train")
     test_dataset = load_dataset("madrylab/gsm8k-platinum", "main", split="test")
@@ -107,9 +108,10 @@ def main():
                 few_shot_examples=few_shot_examples,
                 format_spec=format_spec,
                 reasoning_answer_separator=args.reasoning_answer_separator,
+                chat_template=args.use_chat_template
             )
 
-            generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, batch_size=batch_size)
+            generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, chat_template=args.use_chat_template, batch_size=batch_size)
             print(f"Length of generations: {len(generations)}")
             _save_json(generations, generations_path)
 
