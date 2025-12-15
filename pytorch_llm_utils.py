@@ -234,12 +234,12 @@ def get_generations(
             example = {key: batch_examples[key][j] for key in batch_examples}
             prompts_batch.append(prompt_builder_fn(example))
 
+        if chat_template:
+            prompts_batch = list(map(lambda x : tokenizer.apply_chat_template(x, tokenize=False, 
+                                                                              add_generation_prompt=True), 
+                                     prompts_batch))
         try:
-            if chat_template:
-                tokenizer_method = tokenizer.apply_chat_template
-            else:
-                tokenizer_method = tokenizer.__call__
-            inputs = tokenizer_method(
+            inputs = tokenizer(
                 prompts_batch,
                 return_tensors="pt",
                 padding="longest",
@@ -250,10 +250,9 @@ def get_generations(
         except Exception as e:
             print(f"Error during tokenization for batch starting at index {i}: {e}")
             raise
-            
-        input_ids = inputs.input_ids.to(device)
-        attention_mask = inputs.attention_mask.to(device)
-        
+
+        input_ids = inputs['input_ids'].to(device)
+        attention_mask = inputs['attention_mask'].to(device)
         # This is the length of the (left-)padded input sequence
         num_prompt_tokens_padded_length = input_ids.shape[1]
 
@@ -268,6 +267,7 @@ def get_generations(
                     top_p=None,
                     top_k=None,
                     pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
                     stop_strings=stop_strings,
                     tokenizer=tokenizer
                 )
@@ -279,8 +279,8 @@ def get_generations(
         # generated_sequences will be [P, P, T1, T2, T3, G1, G2, G3]
         # The original number of tokens *including padding* was num_prompt_tokens_padded_length.
         # So, we want to slice from that point onwards.
-        generated_tokens_only = generated_sequences[:, num_prompt_tokens_padded_length:] # chat-template
-        
+        generated_tokens_only = generated_sequences[:, num_prompt_tokens_padded_length:]
+
         try:
             decoded_texts = tokenizer.batch_decode(generated_tokens_only, skip_special_tokens=True) 
         except Exception as e:

@@ -116,7 +116,7 @@ def build_gsm8k_few_shot_prompt(
         few_shot_prompt = []
         for example in few_shot_examples: 
             few_shot_prompt.extend(chat_format_gsm8k_example(example, format_spec, reasoning_answer_separator))
-        few_shot_prompt.append(chat_format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)[:1])
+        few_shot_prompt.append(chat_format_gsm8k_example(test_example_to_format, format_spec, reasoning_answer_separator)[0])
     else:
         few_shot_prompt = "\n\n".join(format_gsm8k_example(example, format_spec, reasoning_answer_separator) for example in few_shot_examples) \
             + "\n\n" \

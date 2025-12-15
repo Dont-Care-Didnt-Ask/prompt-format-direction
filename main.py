@@ -56,8 +56,9 @@ def parse_args():
     # In GSM8K, the reasoning and answer are both contained
     # in column "answer" as a string and are separated by "####"
     parser.add_argument("--reasoning-answer-separator", type=str, default="####")
-    parser.add_argument("--use-chat-template", type=bool, default=True)
-    # parser.add_argument("--enable-thinking", type=bool, default=False)
+    parser.add_argument("--use-chat-template", action='store_true')
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--enable-thinking", action='store_true')
     return parser.parse_args()
 
 def main():
@@ -74,7 +75,7 @@ def main():
     second_descriptor = "reasoning"
     third_descriptor = "answer"
     stop_strings = ["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant"]
-    batch_size = 32
+    batch_size = args.batch_size
     model, tokenizer, device = setup_pytorch_model_tokenizer(args.model_name_or_path, device_preference="cuda:0")
     # Load datasets
     train_dataset = load_dataset("openai/gsm8k", "main", split="train")
