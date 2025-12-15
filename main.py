@@ -59,6 +59,7 @@ def parse_args():
     parser.add_argument("--use-chat-template", action='store_true')
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--enable-thinking", action='store_true')
+    parser.add_argument("--device", type=str, default='cuda:0')
     return parser.parse_args()
 
 def main():
@@ -76,7 +77,7 @@ def main():
     third_descriptor = "answer"
     stop_strings = ["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant"]
     batch_size = args.batch_size
-    model, tokenizer, device = setup_pytorch_model_tokenizer(args.model_name_or_path, device_preference="cuda:0")
+    model, tokenizer, device = setup_pytorch_model_tokenizer(args.model_name_or_path, device_preference=args.device)
     # Load datasets
     train_dataset = load_dataset("openai/gsm8k", "main", split="train")
     test_dataset = load_dataset("madrylab/gsm8k-platinum", "main", split="test")
@@ -103,15 +104,20 @@ def main():
         generations_path = os.path.join(experiment_dir, f"generations_format_spec_{format_index}.json")
         embeddings_path = os.path.join(experiment_dir, f"embeddings_format_spec_{format_index}.pth")
 
-        if not os.path.exists(generations_path) or args.force_overwrite:
-            prompt_builder_fn = partial(
-                build_gsm8k_few_shot_prompt,
-                few_shot_examples=few_shot_examples,
-                format_spec=format_spec,
-                reasoning_answer_separator=args.reasoning_answer_separator,
-                chat_template=args.use_chat_template
-            )
+        prompt_builder_fn = partial(
+            build_gsm8k_few_shot_prompt,
+            few_shot_examples=few_shot_examples,
+            format_spec=format_spec,
+            reasoning_answer_separator=args.reasoning_answer_separator,
+            chat_template=args.use_chat_template
+        )
+        if args.use_chat_template:
+            old_prompt_builder_fn = prompt_builder_fn
+            prompt_builder_fn = lambda x : tokenizer.apply_chat_template(old_prompt_builder_fn(x), 
+                                                                            tokenize=False, 
+                                                                            add_generation_prompt=True)
 
+        if not os.path.exists(generations_path) or args.force_overwrite:
             generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, chat_template=args.use_chat_template, batch_size=batch_size)
             print(f"Length of generations: {len(generations)}")
             _save_json(generations, generations_path)

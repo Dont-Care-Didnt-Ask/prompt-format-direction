@@ -190,7 +190,6 @@ def get_generations(
     batch_size: int = 8,
     max_new_tokens: int = 256,
     temperature: float = 0.0,
-    chat_template: bool = False,
     new_column_name: str = "generated_text"
 ) -> List[str]:
     """
@@ -233,11 +232,6 @@ def get_generations(
         for j in range(current_batch_size):
             example = {key: batch_examples[key][j] for key in batch_examples}
             prompts_batch.append(prompt_builder_fn(example))
-
-        if chat_template:
-            prompts_batch = list(map(lambda x : tokenizer.apply_chat_template(x, tokenize=False, 
-                                                                              add_generation_prompt=True), 
-                                     prompts_batch))
         try:
             inputs = tokenizer(
                 prompts_batch,
