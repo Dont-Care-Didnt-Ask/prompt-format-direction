@@ -48,18 +48,21 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model-name-or-path", type=str, required=True)
     parser.add_argument("-e", "--experiment-name", type=str, required=True)
-    parser.add_argument("--n-test", type=int, default=100, help="Number of test examples to use")
     parser.add_argument("-f", "--force-overwrite", action="store_true", help="Force overwrite of existing files")
     parser.add_argument("--root-dir", type=str, default="exp")
+
+    parser.add_argument("--n-test", type=int, default=100, help="Number of test examples to use")
     parser.add_argument("--n-format-specs", type=int, default=10)
+    parser.add_argument("--use-chat-template", action='store_true')
+    parser.add_argument("--enable-thinking", action='store_true')
+
+    parser.add_argument("--max-new-tokens", type=int, default=256)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=24)
+    parser.add_argument("--device", type=str, default='cuda:0')
     # In GSM8K, the reasoning and answer are both contained
     # in column "answer" as a string and are separated by "####"
     parser.add_argument("--reasoning-answer-separator", type=str, default="####")
-    parser.add_argument("--use-chat-template", action='store_true')
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--enable-thinking", action='store_true')
-    parser.add_argument("--device", type=str, default='cuda:0')
     return parser.parse_args()
 
 def main():
@@ -77,7 +80,9 @@ def main():
     third_descriptor = "answer"
     stop_strings = ["Question", "question", "QUESTION", "</s>", "<|im_end|>", "You are an AI assistant"]
     batch_size = args.batch_size
+    max_new_tokens = args.max_new_tokens
     model, tokenizer, device = setup_pytorch_model_tokenizer(args.model_name_or_path, device_preference=args.device)
+
     # Load datasets
     train_dataset = load_dataset("openai/gsm8k", "main", split="train")
     test_dataset = load_dataset("madrylab/gsm8k-platinum", "main", split="test")
@@ -116,14 +121,17 @@ def main():
             prompt_builder_fn = lambda x : tokenizer.apply_chat_template(old_prompt_builder_fn(x), 
                                                                             tokenize=False, 
                                                                             add_generation_prompt=True)
-
+        
         if not os.path.exists(generations_path) or args.force_overwrite:
-            generations = get_generations(test_dataset, prompt_builder_fn, model, tokenizer, device, stop_strings, chat_template=args.use_chat_template, batch_size=batch_size)
+            generations = get_generations(test_dataset, prompt_builder_fn,
+                                          model, tokenizer, device, stop_strings, 
+                                          batch_size=batch_size, max_new_tokens=max_new_tokens)
             print(f"Length of generations: {len(generations)}")
             _save_json(generations, generations_path)
 
         if not os.path.exists(embeddings_path) or args.force_overwrite:
-            embeddings = get_last_token_embeddings(test_dataset, prompt_builder_fn, model, tokenizer, device, batch_size=batch_size)
+            embeddings = get_last_token_embeddings(test_dataset, prompt_builder_fn, 
+                                                  model, tokenizer, device, batch_size=batch_size)
             print(f"Embeddings shape: {embeddings.shape}")
             torch.save(embeddings, embeddings_path)
 
